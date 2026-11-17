@@ -65,8 +65,6 @@ async function init() {
     els.uploadArea.classList.remove("dragover");
     if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
   });
-  els.uploadArea.addEventListener("click", () => els.fileInput.click());
-
   // Process
   els.processBtn.addEventListener("click", processFile);
 

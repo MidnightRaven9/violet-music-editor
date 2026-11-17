@@ -89,6 +89,7 @@ main {
 }
 
 .upload-area {
+  display: block;
   border: 2px dashed rgba(139, 92, 246, 0.35);
   border-radius: 0.75rem;
   padding: 1.5rem 1rem;
