@@ -1,0 +1,152 @@
+"""Audio processing for the EDM Remix Maker.
+
+Uses FFmpeg for decode/encode, librosa for time-stretch/pitch-shift,
+and pedalboard (Spotify) for reverb/EQ/delay.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+import librosa
+import numpy as np
+import soundfile as sf
+from pedalboard import Pedalboard, Reverb, LowShelfFilter, Delay, Gain
+
+FFMPEG = "ffmpeg"
+
+
+def run_ffmpeg(args: list[str]) -> None:
+    """Run an ffmpeg command, raising on failure."""
+    result = subprocess.run(
+        [FFMPEG, "-y", *args],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {result.stderr.strip()}")
+
+
+def decode_to_wav(input_path: str, output_path: str) -> None:
+    """Convert any audio file to 44.1kHz PCM WAV."""
+    run_ffmpeg([
+        "-i", input_path,
+        "-acodec", "pcm_s16le",
+        "-ar", "44100",
+        output_path,
+    ])
+
+
+def encode_to_mp3(input_path: str, output_path: str) -> None:
+    """Encode WAV to MP3 (VBR quality ~2)."""
+    run_ffmpeg([
+        "-i", input_path,
+        "-acodec", "libmp3lame",
+        "-aq", "2",
+        output_path,
+    ])
+
+
+def _build_board(effect: str, reverb_wet: float) -> Pedalboard:
+    """Build a pedalboard chain for the given effect."""
+    if effect == "slowed_reverb":
+        return Pedalboard([
+            Reverb(room_size=0.7, damping=0.5,
+                   wet_level=reverb_wet, dry_level=max(0.0, 1.0 - reverb_wet)),
+        ])
+    if effect == "reverb":
+        return Pedalboard([
+            Reverb(room_size=0.6, damping=0.5,
+                   wet_level=reverb_wet, dry_level=max(0.0, 1.0 - reverb_wet)),
+        ])
+    if effect == "bass_boost":
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=200, gain_db=8.0),
+            Gain(gain_db=2.0),
+        ])
+    if effect == "echo":
+        return Pedalboard([
+            Delay(delay_seconds=0.3, feedback=0.4, mix=0.35),
+        ])
+    # nightcore / custom: no pedalboard chain (librosa handles speed+pitch)
+    return Pedalboard([])
+
+
+def apply_effects(
+    y: np.ndarray,
+    sr: int,
+    effect: str,
+    rate: float,
+    pitch: float,
+    reverb: float,
+) -> np.ndarray:
+    """Apply the effect chain to audio.
+
+    y shape: (channels, samples) or (samples,) for mono.
+    """
+    # 1) Time-stretch (changes speed, preserves pitch)
+    if rate != 1.0:
+        y = librosa.effects.time_stretch(y, rate=rate)
+
+    # 2) Pitch shift (changes pitch, preserves speed) — Nightcore uses this
+    if pitch != 0:
+        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch)
+
+    # 3) Pedalboard effects (reverb / bass / echo)
+    board = _build_board(effect, reverb)
+    if len(board) > 0:
+        y = board(y, sr)
+
+    return y
+
+
+def process_file(
+    input_path: str,
+    output_path: str,
+    effect: str,
+    rate: float,
+    pitch: float,
+    reverb: float,
+    progress_cb=None,
+) -> None:
+    """Full pipeline: decode -> process -> encode -> MP3.
+
+    progress_cb(percent, message) is called at each stage.
+    """
+    stem = str(Path(output_path).with_suffix(""))
+    decoded_wav = f"{stem}_decoded.wav"
+    processed_wav = f"{stem}_processed.wav"
+
+    def cb(pct: int, msg: str) -> None:
+        if progress_cb:
+            progress_cb(pct, msg)
+
+    try:
+        cb(10, "Decoding audio...")
+        decode_to_wav(input_path, decoded_wav)
+
+        cb(30, "Loading audio...")
+        # mono=False preserves stereo; shape -> (channels, samples)
+        y, sr = librosa.load(decoded_wav, sr=None, mono=False)
+
+        cb(50, f"Applying {effect.replace('_', ' ')}...")
+        y = apply_effects(y, sr, effect, rate, pitch, reverb)
+
+        cb(70, "Encoding to MP3...")
+        if y.ndim == 1:
+            sf.write(processed_wav, y, sr)
+        else:
+            sf.write(processed_wav, y.T, sr)  # (samples, channels)
+
+        encode_to_mp3(processed_wav, output_path)
+
+        cb(100, "Done")
+    finally:
+        # Clean up intermediate WAVs
+        for p in (decoded_wav, processed_wav):
+            try:
+                os.remove(p)
+            except OSError:
+                pass

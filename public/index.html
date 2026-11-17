@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>EDM Remix Maker</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">Remix Maker</div>
+      <div style="font-size:0.8rem;color:#94a3b8;">PWA · local</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>📤 Upload your song</h2>
+      <div class="upload-area" id="uploadArea">
+        <span class="upload-icon">🎵</span>
+        <p>Tap to choose an MP3 (or drag &amp; drop)</p>
+        <input type="file" id="fileInput" accept="audio/*" />
+        <div class="file-name" id="fileName">No file chosen</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>✨ Pick a remix style</h2>
+      <div class="effects-grid">
+        <button type="button" class="effect-btn active" data-effect="nightcore">
+          <span class="effect-label">Nightcore</span>
+          <span class="effect-desc">Speed up + pitch up</span>
+        </button>
+        <button type="button" class="effect-btn" data-effect="slowed_reverb">
+          <span class="effect-label">Slowed + Reverb</span>
+          <span class="effect-desc">Slowed down + reverb</span>
+        </button>
+        <button type="button" class="effect-btn" data-effect="bass_boost">
+          <span class="effect-label">Bass Boost</span>
+          <span class="effect-desc">Low-end emphasis</span>
+        </button>
+        <button type="button" class="effect-btn" data-effect="echo">
+          <span class="effect-label">Echo / Delay</span>
+          <span class="effect-desc">Repeating slapback</span>
+        </button>
+        <button type="button" class="effect-btn" data-effect="reverb">
+          <span class="effect-label">Reverb</span>
+          <span class="effect-desc">Space &amp; atmosphere</span>
+        </button>
+        <button type="button" class="effect-btn" data-effect="custom">
+          <span class="effect-label">Custom Remix</span>
+          <span class="effect-desc">Your own sliders</span>
+        </button>
+      </div>
+
+      <div class="custom-controls" id="customControls">
+        <div class="slider-group">
+          <label>Speed</label>
+          <div class="slider-row">
+            <input type="range" id="rateInput" min="0.5" max="2.0" step="0.05" value="1.3" />
+            <span class="slider-value" id="rateVal">1.30×</span>
+          </div>
+        </div>
+        <div class="slider-group">
+          <label>Pitch</label>
+          <div class="slider-row">
+            <input type="range" id="pitchInput" min="-12" max="12" step="1" value="7" />
+            <span class="slider-value" id="pitchVal">7 semitones</span>
+          </div>
+        </div>
+        <div class="slider-group">
+          <label>Reverb</label>
+          <div class="slider-row">
+            <input type="range" id="reverbInput" min="0" max="1" step="0.05" value="0.3" />
+            <span class="slider-value" id="reverbVal">30%</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="process-btn" id="processBtn">
+        <span id="processSpinner" class="spinner hidden"></span>
+        Generate Remix
+      </button>
+
+      <div class="status" id="status">
+        <span id="statusText">Ready</span>
+      </div>
+    </section>
+
+    <section class="card player-card hidden" id="resultSection">
+      <h2>🎧 Your Remix</h2>
+      <audio class="audio-player" id="originalAudio" controls hidden></audio>
+      <audio class="audio-player" id="remixAudio" controls></audio>
+      <div class="compare">Original ↔ Remix</div>
+      <button type="button" class="download-btn" id="downloadBtn" disabled>
+        Download MP3
+      </button>
+    </section>
+  </main>
+
+  <footer>
+    EDM Remix Maker &middot; runs locally on your device
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

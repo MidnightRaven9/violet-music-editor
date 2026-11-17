@@ -1,0 +1,24 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime artifacts
+uploads/
+processed/
+*.mp3
+*.wav
+*.ogg
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Android build
+android-project/build/
+android-project/.gradle/
+*.apk
+*.keystore

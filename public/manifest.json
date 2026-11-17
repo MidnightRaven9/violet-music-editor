@@ -1,0 +1,23 @@
+{
+  "name": "EDM Remix Maker",
+  "short_name": "Remix Maker",
+  "description": "Upload an MP3 and turn it into Nightcore, Slowed + Reverb, Bass Boost, and more.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#8b5cf6",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
