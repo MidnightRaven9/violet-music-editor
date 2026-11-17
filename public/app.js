@@ -84,7 +84,16 @@ async function init() {
 
   // Download
   els.downloadBtn.addEventListener("click", () => {
-    if (state.jobId) location.href = `${API}/api/download/${state.jobId}`;
+    if (!state.jobId) return;
+    const url = `${API}/api/download/${state.jobId}`;
+    // Use an anchor with download attribute so browsers save the file.
+    // In the Android WebView this triggers the DownloadListener.
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `violet_remix_${state.jobId.slice(0, 8)}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   });
 
   // PWA install prompt
@@ -111,7 +120,7 @@ function handleFile(file) {
   els.originalAudio.src = URL.createObjectURL(file);
   els.originalAudio.hidden = false;
   state.jobId = null;
-  els.resultSection.hidden = true;
+  els.resultSection.classList.add("hidden");
   els.status.classList.remove("visible");
   els.downloadBtn.disabled = true;
   // Auto-select an effect if none chosen
@@ -154,7 +163,7 @@ async function processFile() {
   els.status.classList.remove("error");
   els.statusText.textContent = "Uploading…";
   els.processBtn.disabled = true;
-  els.resultSection.hidden = true;
+  els.resultSection.classList.add("hidden");
   els.downloadBtn.disabled = true;
 
   try {
@@ -192,7 +201,9 @@ async function pollJob() {
       const remixUrl = `${API}/api/download/${state.jobId}?t=${Date.now()}`;
       els.remixAudio.src = remixUrl;
       els.remixAudio.hidden = false;
-      els.resultSection.hidden = false;
+      // resultSection is hidden via the CSS class ".hidden", so remove the
+      // class (setting .hidden=false only clears the HTML attribute).
+      els.resultSection.classList.remove("hidden");
       els.downloadBtn.disabled = false;
       els.processBtn.disabled = false;
       return;

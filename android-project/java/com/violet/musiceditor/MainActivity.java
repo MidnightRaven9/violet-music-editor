@@ -2,13 +2,17 @@ package com.violet.musiceditor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DownloadManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.preference.PreferenceManager;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -77,6 +81,37 @@ public class MainActivity extends Activity {
                         Intent.createChooser(intent, "Choose audio file"),
                         FILE_CHOOSER_REQUEST_CODE);
                 return true;
+            }
+        });
+
+        // Handle downloads (the remix MP3) via the system DownloadManager.
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent,
+                                        String contentDisposition, String mimeType,
+                                        long contentLength) {
+                try {
+                    String fileName = "violet_remix.mp3";
+                    DownloadManager.Request request =
+                            new DownloadManager.Request(Uri.parse(url));
+                    request.setMimeType("audio/mpeg");
+                    request.setTitle("Violet Music Editor");
+                    request.setDescription("Downloading remix...");
+                    request.setNotificationVisibility(
+                            DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.setDestinationInExternalPublicDir(
+                            Environment.DIRECTORY_DOWNLOADS, fileName);
+                    DownloadManager manager =
+                            (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    if (manager != null) {
+                        manager.enqueue(request);
+                        Toast.makeText(MainActivity.this,
+                                "Downloading remix to Downloads", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this,
+                            "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
             }
         });
 
