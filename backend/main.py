@@ -18,8 +18,8 @@ PROCESSED_DIR = BASE_DIR / "processed"
 UPLOAD_DIR.mkdir(exist_ok=True)
 PROCESSED_DIR.mkdir(exist_ok=True)
 
-sys.path.insert(0, str(BASE_DIR / "backend"))
-from audio import process_file  # noqa: E402
+sys.path.insert(0, str(BASE_DIR))
+from backend.audio import process_file  # noqa: E402
 
 app = FastAPI(title="EDM Remix Maker")
 
@@ -126,6 +126,11 @@ def list_effects():
         "bass_boost": {"label": "Bass Boost", "rate": 1.0, "pitch": 0, "reverb": 0},
         "echo": {"label": "Echo / Delay", "rate": 1.0, "pitch": 0, "reverb": 0},
         "reverb": {"label": "Reverb", "rate": 1.0, "pitch": 0, "reverb": 0.35},
+        "chroma": {"label": "Chorus/Flange", "rate": 1.0, "pitch": 0, "reverb": 0.1},
+        "distortion": {"label": "Distortion", "rate": 1.0, "pitch": 0, "reverb": 0.2},
+        "phaser": {"label": "Phaser", "rate": 1.0, "pitch": 0, "reverb": 0.1},
+        "bitcrush": {"label": "Bitcrush", "rate": 1.0, "pitch": 0, "reverb": 0.0},
+        "glitchcore": {"label": "Glitchcore", "rate": 1.4, "pitch": 12, "reverb": 0.3},
         "custom": {"label": "Custom Remix", "rate": 1.0, "pitch": 0, "reverb": 0},
     }
 

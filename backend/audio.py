@@ -13,7 +13,17 @@ from pathlib import Path
 import librosa
 import numpy as np
 import soundfile as sf
-from pedalboard import Pedalboard, Reverb, LowShelfFilter, Delay, Gain
+from pedalboard import (
+    Pedalboard,
+    Reverb,
+    LowShelfFilter,
+    Delay,
+    Gain,
+    Chorus,
+    Distortion,
+    Phaser,
+    Bitcrush,
+)
 
 FFMPEG = "ffmpeg"
 
@@ -69,6 +79,28 @@ def _build_board(effect: str, reverb_wet: float) -> Pedalboard:
     if effect == "echo":
         return Pedalboard([
             Delay(delay_seconds=0.3, feedback=0.4, mix=0.35),
+        ])
+    if effect == "chroma":
+        return Pedalboard([
+            Chorus(modulation_frequency_hz=0.5, depth=0.3, mix=0.3),
+        ])
+    if effect == "distortion":
+        return Pedalboard([
+            Distortion(dry_wet=0.2, gain=6.0),
+        ])
+    if effect == "phaser":
+        return Pedalboard([
+            Phaser(depth=0.5, feedback=0.3, frequency=0.3, mix=0.3),
+        ])
+    if effect == "bitcrush":
+        return Pedalboard([
+            Bitcrush(bit_depth=4),
+        ])
+    if effect == "glitchcore":
+        return Pedalboard([
+            Bitcrush(bit_depth=4),
+            Gain(gain_db=3.0),
+            Reverb(room_size=0.5, damping=0.5, wet_level=0.2, dry_level=0.8),
         ])
     # nightcore / custom: no pedalboard chain (librosa handles speed+pitch)
     return Pedalboard([])
