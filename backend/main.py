@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Callable
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
@@ -18,21 +19,13 @@ PROCESSED_DIR = BASE_DIR / "processed"
 UPLOAD_DIR.mkdir(exist_ok=True)
 PROCESSED_DIR.mkdir(exist_ok=True)
 
-sys.path.insert(0, str(BASE_DIR))
-from backend.audio import process_file  # noqa: E402
-
 app = FastAPI(title="EDM Remix Maker")
 
 # In-memory job store: job_id -> {status, progress, message, effect, download_url, error}
 JOBS: dict[str, dict] = {}
 
-
-def _make_cb(job_id: str) -> Callable[[int, str], None]:
-    def cb(pct: int, msg: str) -> None:
-        if job_id in JOBS:
-            JOBS[job_id]["progress"] = pct
-            JOBS[job_id]["message"] = msg
-    return cb
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+PROCESS_TIMEOUT_SECONDS = 600  # 10 minutes
 
 
 def _process_job(
@@ -44,16 +37,56 @@ def _process_job(
     pitch: float,
     reverb: float,
 ) -> None:
+    """Run audio processing in an isolated subprocess.
+
+    This keeps the API server alive even if the worker is OOM-killed or crashes.
+    """
+    JOBS[job_id]["status"] = "processing"
+    JOBS[job_id]["message"] = "Starting audio engine..."
+
+    worker_script = str(BASE_DIR / "backend" / "worker.py")
+    cmd = [
+        sys.executable, worker_script,
+        input_path, output_path, effect,
+        str(rate), str(pitch), str(reverb),
+    ]
+
     try:
-        JOBS[job_id]["status"] = "processing"
-        process_file(
-            input_path, output_path, effect, rate, pitch, reverb,
-            _make_cb(job_id),
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(BASE_DIR),
         )
-        JOBS[job_id]["status"] = "done"
-        JOBS[job_id]["progress"] = 100
-        JOBS[job_id]["message"] = "Remix ready!"
-        JOBS[job_id]["download_url"] = f"/api/download/{job_id}"
+
+        # Stream progress updates from worker stdout
+        if proc.stdout:
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    JOBS[job_id]["progress"] = data.get("progress", 0)
+                    JOBS[job_id]["message"] = data.get("message", "Processing...")
+                except json.JSONDecodeError:
+                    pass
+
+        try:
+            proc.wait(timeout=PROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            raise RuntimeError("Processing timed out (audio too long or server overloaded)")
+
+        if proc.returncode == 0:
+            JOBS[job_id]["status"] = "done"
+            JOBS[job_id]["progress"] = 100
+            JOBS[job_id]["message"] = "Remix ready!"
+            JOBS[job_id]["download_url"] = f"/api/download/{job_id}"
+        else:
+            stderr = proc.stderr.read() if proc.stderr else ""
+            raise RuntimeError(stderr.strip() or "Audio processing failed")
     except Exception as exc:  # noqa: BLE001
         JOBS[job_id]["status"] = "error"
         JOBS[job_id]["message"] = str(exc)
@@ -63,6 +96,11 @@ def _process_job(
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
 
 
 @app.post("/api/upload")
@@ -75,8 +113,15 @@ async def upload(
     reverb: float = Form(0.3),
 ):
     job_id = str(uuid.uuid4())
-    upload_path = UPLOAD_DIR / f"{job_id}.mp3"
     content = await file.read()
+
+    if len(content) > MAX_UPLOAD_BYTES:
+        return {
+            "job_id": None,
+            "error": f"File too large ({len(content) / 1024 / 1024:.1f} MB). Max is {MAX_UPLOAD_BYTES / 1024 / 1024:.0f} MB.",
+        }
+
+    upload_path = UPLOAD_DIR / f"{job_id}.mp3"
     upload_path.write_bytes(content)
 
     JOBS[job_id] = {

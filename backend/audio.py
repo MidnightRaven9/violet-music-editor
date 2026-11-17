@@ -120,13 +120,13 @@ def apply_effects(
     """
     # 1) Time-stretch (changes speed, preserves pitch)
     if rate != 1.0:
-        y = librosa.effects.time_stretch(y, rate=rate)
+        y = librosa.effects.time_stretch(y, rate=rate, n_fft=1024)
 
     # 2) Pitch shift (changes pitch, preserves speed) — Nightcore uses this
     if pitch != 0:
-        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch)
+        y = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch, n_fft=1024)
 
-    # 3) Pedalboard effects (reverb / bass / echo)
+    # 3) Pedalboard effects (reverb / bass / echo / modulation)
     board = _build_board(effect, reverb)
     if len(board) > 0:
         y = board(y, sr)
@@ -160,17 +160,21 @@ def process_file(
         decode_to_wav(input_path, decoded_wav)
 
         cb(30, "Loading audio...")
-        # mono=False preserves stereo; shape -> (channels, samples)
-        y, sr = librosa.load(decoded_wav, sr=None, mono=False)
+        # mono=True keeps memory low on phones; shape -> (samples,)
+        y, sr = librosa.load(decoded_wav, sr=None, mono=True)
+
+        max_duration = 300  # 5 minutes
+        duration = y.shape[-1] / sr
+        if duration > max_duration:
+            raise RuntimeError(
+                f"Audio is {duration:.0f}s long. Max allowed is {max_duration}s (5 minutes)."
+            )
 
         cb(50, f"Applying {effect.replace('_', ' ')}...")
         y = apply_effects(y, sr, effect, rate, pitch, reverb)
 
         cb(70, "Encoding to MP3...")
-        if y.ndim == 1:
-            sf.write(processed_wav, y, sr)
-        else:
-            sf.write(processed_wav, y.T, sr)  # (samples, channels)
+        sf.write(processed_wav, y, sr)
 
         encode_to_mp3(processed_wav, output_path)
 

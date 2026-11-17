@@ -161,6 +161,9 @@ async function processFile() {
     const res = await fetch(`${API}/api/upload`, { method: "POST", body: form });
     if (!res.ok) throw new Error("Upload failed");
     const data = await res.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
     state.jobId = data.job_id;
     pollJob();
   } catch (err) {
