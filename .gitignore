@@ -21,4 +21,5 @@ processed/
 android-project/build/
 android-project/.gradle/
 *.apk
+*.idsig
 *.keystore
