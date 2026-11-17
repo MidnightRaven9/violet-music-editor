@@ -50,7 +50,15 @@ Open <http://127.0.0.1:8000> in a browser. On Android Chrome, use
 ### Requirements
 - Python 3.10+
 - FFmpeg (`apt install ffmpeg`)
+- **RubberBand** (`apt install rubberband-cli`) — studio-grade time-stretch / pitch-shift engine
 - Python packages in `backend/requirements.txt`
+
+### Audio engine
+Remixes use a professional-grade pipeline:
+1. **RubberBand** (R2 phase-locked engine) for time-stretch / pitch-shift — avoids the warbling artifacts of basic phase vocoders, preserves stereo
+2. **Pedalboard** effects (reverb, bass, delay, chorus, phaser, distortion, bitcrush)
+3. **Mastering chain** on every remix: high-pass filter, gentle glue compression, presence/air EQ, limiter, and peak normalization to -1 dBFS
+4. High-quality VBR MP3 encoding (~245 kbps)
 
 ---
 
