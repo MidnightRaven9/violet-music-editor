@@ -1,0 +1,10 @@
+# Use Python 3.10 on the laptop. Install CPU or CUDA torch per the README.
+torch==2.1.0
+torchaudio==2.1.0
+audiocraft==1.3.0
+av==11.0.0
+fastapi
+uvicorn
+python-multipart
+soundfile
+numpy

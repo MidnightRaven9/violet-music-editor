@@ -96,6 +96,19 @@ async function init() {
     a.remove();
   });
 
+  // AI Restyle button + duration slider + status hint
+  $("aiRestyleBtn").addEventListener("click", aiRestyle);
+  $("aiDurationInput").addEventListener("input", () => {
+    $("aiDurationVal").textContent = $("aiDurationInput").value + "s";
+  });
+  try {
+    const r = await fetch(`${API}/api/ai-status`);
+    const s = await r.json();
+    $("aiStatusHint").textContent = s.connected
+      ? "🟢 Engine connected."
+      : "⚪ Engine not connected — the AI button will tell you how to connect it.";
+  } catch (e) { /* status hint optional */ }
+
   // PWA install prompt
   let deferredInstall;
   window.addEventListener("beforeinstallprompt", (e) => {
@@ -147,6 +160,38 @@ function selectEffect(effect, meta) {
     els.reverbVal.textContent = (state.reverb * 100).toFixed(0) + "%";
   }
   els.processBtn.disabled = !state.selectedFile;
+}
+
+async function aiRestyle() {
+  if (!state.selectedFile) {
+    els.statusText.textContent = "Choose a song first";
+    els.status.classList.add("visible", "error");
+    return;
+  }
+  const form = new FormData();
+  form.append("file", state.selectedFile);
+  form.append("style", $("aiStyleInput").value);
+  form.append("duration", $("aiDurationInput").value);
+
+  els.status.classList.add("visible");
+  els.status.classList.remove("error");
+  els.statusText.textContent = "Sending to AI engine…";
+  els.resultSection.classList.add("hidden");
+  els.downloadBtn.disabled = true;
+  $("aiRestyleBtn").disabled = true;
+
+  try {
+    const res = await fetch(`${API}/api/ai-restyle`, { method: "POST", body: form });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    state.jobId = data.job_id;
+    pollJob();
+  } catch (err) {
+    els.statusText.textContent = err.message || "AI restyle failed";
+    els.status.classList.add("error");
+  } finally {
+    $("aiRestyleBtn").disabled = false;
+  }
 }
 
 async function processFile() {

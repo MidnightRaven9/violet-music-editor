@@ -139,6 +139,30 @@
       </div>
     </section>
 
+    <section class="card">
+      <h2>🤖 AI Restyle (real remix, keeps your melody)</h2>
+      <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:0.75rem;">
+        Powered by MusicGen on your laptop. Describe the style you want.
+        <span id="aiStatusHint"></span>
+      </p>
+      <input
+        type="text"
+        id="aiStyleInput"
+        value="house remix, 120 BPM, four on the floor, warm bass, club ready"
+        style="width:100%;padding:0.7rem;border-radius:0.5rem;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#f8fafc;font-size:0.9rem;"
+      />
+      <div class="slider-group" style="margin-top:0.75rem;">
+        <label>Length (seconds)</label>
+        <div class="slider-row">
+          <input type="range" id="aiDurationInput" min="10" max="60" step="5" value="30" />
+          <span class="slider-value" id="aiDurationVal">30s</span>
+        </div>
+      </div>
+      <button type="button" class="process-btn" id="aiRestyleBtn" style="background:#6366f1;">
+        ✨ AI Restyle My Song
+      </button>
+    </section>
+
     <section class="card player-card hidden" id="resultSection">
       <h2>🎧 Your Remix</h2>
       <audio class="audio-player" id="originalAudio" controls hidden></audio>

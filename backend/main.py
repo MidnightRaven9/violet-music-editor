@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 
+import requests
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,6 +28,10 @@ JOBS: dict[str, dict] = {}
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 PROCESS_TIMEOUT_SECONDS = 600  # 10 minutes
+
+# Optional laptop/desktop AI restyle engine (MusicGen melody). Set this to the
+# engine's LAN URL, e.g. http://192.168.1.20:8002 . Leave empty to disable.
+AI_ENGINE_URL = os.getenv("AI_ENGINE_URL", "").strip().rstrip("/")
 
 
 def _process_job(
@@ -93,6 +99,37 @@ def _process_job(
         JOBS[job_id]["error"] = str(exc)
 
 
+def _ai_restyle_job(job_id: str, input_path: str, style: str, duration: float) -> None:
+    """Forward the uploaded song to the external AI engine and save the result."""
+    JOBS[job_id]["status"] = "processing"
+    JOBS[job_id]["message"] = "Contacting AI restyle engine..."
+    JOBS[job_id]["progress"] = 10
+    try:
+        with open(input_path, "rb") as f:
+            resp = requests.post(
+                f"{AI_ENGINE_URL}/restyle",
+                files={"file": (os.path.basename(input_path), f, "audio/mpeg")},
+                data={"style": style, "duration": str(duration)},
+                timeout=1800,  # generation can be slow on CPU
+            )
+        JOBS[job_id]["progress"] = 90
+        if resp.status_code != 200:
+            detail = resp.json().get("error", resp.text[:200]) if resp.content else "engine error"
+            raise RuntimeError(f"AI engine: {detail}")
+        output_path = PROCESSED_DIR / f"{job_id}.mp3"
+        output_path.write_bytes(resp.content)
+        JOBS[job_id]["status"] = "done"
+        JOBS[job_id]["progress"] = 100
+        JOBS[job_id]["message"] = "AI remix ready!"
+        JOBS[job_id]["download_url"] = f"/api/download/{job_id}"
+    except requests.exceptions.ConnectionError:
+        JOBS[job_id]["status"] = "error"
+        JOBS[job_id]["message"] = "AI engine offline. Start it on your laptop and set AI_ENGINE_URL."
+    except Exception as exc:  # noqa: BLE001
+        JOBS[job_id]["status"] = "error"
+        JOBS[job_id]["message"] = str(exc)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -139,6 +176,43 @@ async def upload(
         effect, rate, pitch, reverb,
     )
     return {"job_id": job_id}
+
+
+@app.post("/api/ai-restyle")
+async def ai_restyle(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    style: str = Form("house remix, 120 BPM, four on the floor, warm bass"),
+    duration: float = Form(30),
+):
+    """AI restyle using an external engine. Mirrors the /api/upload job flow."""
+    if not AI_ENGINE_URL:
+        return {
+            "job_id": None,
+            "error": "AI engine not connected. Set AI_ENGINE_URL to your laptop engine and restart the app.",
+        }
+    job_id = str(uuid.uuid4())
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        return {"job_id": None, "error": "File too large (max 25 MB)."}
+    upload_path = UPLOAD_DIR / f"{job_id}.mp3"
+    upload_path.write_bytes(content)
+    JOBS[job_id] = {
+        "status": "uploaded",
+        "progress": 0,
+        "message": "File uploaded",
+        "effect": "ai_restyle",
+        "download_url": None,
+        "error": None,
+    }
+    background_tasks.add_task(_ai_restyle_job, job_id, str(upload_path), style, duration)
+    return {"job_id": job_id}
+
+
+@app.get("/api/ai-status")
+def ai_status() -> dict:
+    """Whether the app is configured to reach an AI engine."""
+    return {"connected": bool(AI_ENGINE_URL), "url": AI_ENGINE_URL or None}
 
 
 @app.get("/api/jobs/{job_id}")

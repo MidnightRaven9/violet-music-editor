@@ -1,6 +1,6 @@
 // Service worker for the EDM Remix Maker PWA.
 // Caches the app shell so it loads instantly (and works offline).
-const CACHE_NAME = "edm-remix-v3";
+const CACHE_NAME = "edm-remix-v4";
 const APP_SHELL = [
   "/",
   "/static/index.html",

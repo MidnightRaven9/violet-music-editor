@@ -1,8 +1,15 @@
 # Python
 venv/
+venv-ai/
+laptop/venv/
 __pycache__/
 *.pyc
 *.pyo
+
+# Model downloads
+ai-models/
+*.bin
+*.safetensors
 
 # Runtime artifacts
 uploads/
