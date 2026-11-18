@@ -13,6 +13,9 @@ const state = {
   muted: false,
   tempo: 1,
   resultUrl: null,       // generated remix URL (when ready)
+  trimStart: 0,          // trim boundaries in original-file seconds
+  trimEnd: 0,
+  peaks: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -126,6 +129,13 @@ function wireEvents() {
   $("musicalKey").addEventListener("change", () => { /* used on generation */ });
 
   $("downloadBtn").addEventListener("click", generateAndDownload);
+  $("trimStart").addEventListener("input", onTrimStart);
+  $("trimEnd").addEventListener("input", onTrimEnd);
+  $("trimReset").addEventListener("click", resetTrim);
+  $("playTrim").addEventListener("click", playTrimmed);
+  document.querySelectorAll("[data-quick]").forEach((b) => {
+    b.addEventListener("click", () => quickTrim(b.dataset.quick));
+  });
   $("aiBtn").addEventListener("click", aiRestyle);
   $("aiDuration").addEventListener("input", (e) => { $("aiDurVal").textContent = e.target.value + "s"; });
   $("differentTrack").addEventListener("click", resetTrack);
@@ -155,7 +165,118 @@ function applyPlaybackRate() {
   audio.playbackRate = Math.max(0.25, Math.min(2.5, rate * state.tempo));
 }
 
-function handleFile(file) {
+async function extractPeaks(file, numBars) {
+  try {
+    const buf = await file.arrayBuffer();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const c = new AC();
+    const decoded = await c.decodeAudioData(buf);
+    c.close();
+    const ch = decoded.getChannelData(0);
+    const step = Math.floor(ch.length / numBars);
+    const peaks = [];
+    for (let i = 0; i < numBars; i++) {
+      let max = 0;
+      const end = Math.min(i * step + step, ch.length);
+      for (let j = i * step; j < end; j += 8) {
+        const v = Math.abs(ch[j] || 0);
+        if (v > max) max = v;
+      }
+      peaks.push(max);
+    }
+    const m = Math.max(...peaks, 0.01);
+    return peaks.map(p => Math.max(0.08, p / m));
+  } catch (e) {
+    return Array.from({ length: numBars }, (_, i) =>
+      Math.max(0.1, 0.2 + 0.6 * Math.abs(Math.sin(i * 0.12) * Math.cos(i * 0.05))));
+  }
+}
+
+function renderPeaks() {
+  const wrap = $("waveBars");
+  wrap.innerHTML = "";
+  state.peaks.forEach((p) => {
+    const bar = document.createElement("div");
+    bar.className = "wave-bar";
+    bar.style.height = Math.max(8, p * 88) + "%";
+    wrap.appendChild(bar);
+  });
+}
+
+function updateTrimUI() {
+  const dur = state.duration || 0;
+  const end = state.trimEnd > 0 ? state.trimEnd : dur;
+  const startPct = dur ? (state.trimStart / dur) * 100 : 0;
+  const endPct = dur ? (end / dur) * 100 : 100;
+  const playPct = dur ? Math.min(100, (audio.currentTime / dur) * 100) : 0;
+
+  $("waveDimLeft").style.width = startPct + "%";
+  $("waveDimRight").style.width = (100 - endPct) + "%";
+  const sel = $("waveSelect");
+  sel.style.left = startPct + "%";
+  sel.style.width = Math.max(0, endPct - startPct) + "%";
+  $("wavePlayhead").style.left = playPct + "%";
+
+  // Color bars by selection/played state
+  const bars = $("waveBars").children;
+  for (let i = 0; i < bars.length; i++) {
+    const pos = (i / bars.length) * 100;
+    const selected = pos >= startPct && pos <= endPct;
+    const played = pos <= playPct;
+    bars[i].className = "wave-bar" + (selected ? (played ? " played" : " sel") : "");
+  }
+
+  $("trimStartTime").textContent = fmt(state.trimStart);
+  $("trimEndTime").textContent = fmt(end);
+  $("trimRange").textContent = `Range: ${fmt(state.trimStart)} - ${fmt(end)} (${fmt(Math.max(0, end - state.trimStart))})`;
+  $("trimReset").classList.toggle("hidden", state.trimStart <= 0 && end >= dur);
+}
+
+function onTrimStart(e) {
+  const dur = state.duration || 0;
+  const end = state.trimEnd > 0 ? state.trimEnd : dur;
+  state.trimStart = Math.min(Number(e.target.value), end - 0.5);
+  if (state.trimStart < 0) state.trimStart = 0;
+  $("trimStart").value = state.trimStart;
+  updateTrimUI();
+}
+
+function onTrimEnd(e) {
+  const dur = state.duration || 0;
+  state.trimEnd = Math.max(Number(e.target.value), state.trimStart + 0.5);
+  if (state.trimEnd > dur) state.trimEnd = dur;
+  $("trimEnd").value = state.trimEnd;
+  updateTrimUI();
+}
+
+function resetTrim() {
+  state.trimStart = 0;
+  state.trimEnd = 0;
+  $("trimStart").value = 0;
+  $("trimEnd").value = state.duration || 100;
+  updateTrimUI();
+}
+
+function quickTrim(type) {
+  const dur = state.duration || 0;
+  if (type === "first30") { state.trimStart = 0; state.trimEnd = Math.min(30, dur); }
+  else if (type === "last30") { state.trimStart = Math.max(0, dur - 30); state.trimEnd = dur; }
+  else if (type === "middle") { const h = dur / 2; state.trimStart = Math.max(0, h - 15); state.trimEnd = Math.min(dur, h + 15); }
+  $("trimStart").value = state.trimStart;
+  $("trimEnd").value = state.trimEnd;
+  updateTrimUI();
+}
+
+function playTrimmed() {
+  initAudioGraph();
+  if (ctx && ctx.state === "suspended") ctx.resume();
+  if (audio) {
+    audio.currentTime = state.trimStart;
+    if (!state.isPlaying) togglePlay();
+  }
+}
+
+async function handleFile(file) {
   state.file = file;
   if (state.originalUrl) URL.revokeObjectURL(state.originalUrl);
   state.originalUrl = URL.createObjectURL(file);
@@ -163,6 +284,8 @@ function handleFile(file) {
   state.resultUrl = null;
   state.duration = 0;
   state.tempo = 1;
+  state.trimStart = 0;
+  state.trimEnd = 0;
   $("tempo").value = 1;
   $("tempoVal").textContent = "100%";
 
@@ -183,9 +306,17 @@ function handleFile(file) {
 
   $("uploadArea").classList.add("hidden");
   $("player").classList.remove("hidden");
+  $("trimmer").classList.remove("hidden");
   setStatus("", false);
   buildPills();
   applyPlaybackRate();
+
+  // Extract waveform peaks for the trimmer
+  state.peaks = await extractPeaks(file, 90);
+  renderPeaks();
+  $("trimStart").max = 100;
+  $("trimEnd").max = 100;
+  $("trimEnd").value = 100;
 }
 
 function selectEffect(id) {
@@ -242,12 +373,27 @@ function onTime() {
   if (!audio) return;
   const cur = audio.currentTime, dur = audio.duration;
   if (dur && !isNaN(dur)) {
-    state.duration = dur;
+    if (state.duration !== dur) {
+      state.duration = dur;
+      $("trimStart").max = dur;
+      $("trimEnd").max = dur;
+      if (state.trimEnd === 0 || state.trimEnd > dur) state.trimEnd = dur;
+      $("trimEnd").value = state.trimEnd;
+    }
     $("durTime").textContent = fmt(dur);
     $("seek").max = dur;
     $("seek").value = cur;
+    // Enforce trim end boundary during playback
+    const activeEnd = state.trimEnd > 0 ? state.trimEnd : dur;
+    if (state.isPlaying && cur >= activeEnd) {
+      audio.pause();
+      audio.currentTime = state.trimStart;
+      state.isPlaying = false;
+      updatePlayIcon();
+    }
   }
   $("curTime").textContent = fmt(cur);
+  updateTrimUI();
 }
 
 function fmt(t) {
@@ -322,6 +468,8 @@ async function generateAndDownload() {
   form.append("rate", String(meta.rate || 1));
   form.append("pitch", String((meta.pitch || 0) + keyToSemitones($("musicalKey").value)));
   form.append("reverb", String(meta.reverb || 0));
+  form.append("trim_start", String(state.trimStart || 0));
+  form.append("trim_end", String(state.trimEnd || 0));
 
   $("downloadBtn").disabled = true;
   setStatus("Generating professional remix…", false);
@@ -431,9 +579,12 @@ function resetTrack() {
   state.file = null;
   state.jobId = null;
   state.resultUrl = null;
+  state.trimStart = 0;
+  state.trimEnd = 0;
   if (state.originalUrl) { URL.revokeObjectURL(state.originalUrl); state.originalUrl = null; }
   audio.src = "";
   $("player").classList.add("hidden");
+  $("trimmer").classList.add("hidden");
   $("uploadArea").classList.remove("hidden");
   $("exportModal").classList.add("hidden");
   $("fileInput").value = "";

@@ -23,7 +23,7 @@ def _progress_cb(pct: int, msg: str) -> None:
 
 def main() -> int:
     if len(sys.argv) < 7:
-        print("Usage: worker.py <input> <output> <effect> <rate> <pitch> <reverb>", file=sys.stderr)
+        print("Usage: worker.py <input> <output> <effect> <rate> <pitch> <reverb> [trim_start] [trim_end]", file=sys.stderr)
         return 1
 
     input_path = sys.argv[1]
@@ -32,9 +32,12 @@ def main() -> int:
     rate = float(sys.argv[4])
     pitch = float(sys.argv[5])
     reverb = float(sys.argv[6])
+    trim_start = float(sys.argv[7]) if len(sys.argv) > 7 else 0.0
+    trim_end = float(sys.argv[8]) if len(sys.argv) > 8 else 0.0
 
     try:
-        process_file(input_path, output_path, effect, rate, pitch, reverb, _progress_cb)
+        process_file(input_path, output_path, effect, rate, pitch, reverb,
+                     trim_start, trim_end, _progress_cb)
         return 0
     except Exception as exc:  # noqa: BLE001
         print(f"ERROR: {exc}", file=sys.stderr)

@@ -69,6 +69,32 @@
 
         <div class="pills" id="pills"></div>
 
+        <!-- Visual Audio Trimmer -->
+        <div class="trimmer hidden" id="trimmer">
+          <div class="trimmer-head">
+            <div class="trimmer-title"><span class="trimmer-icon">✂</span><div><h3>Visual Audio Trimmer</h3><p>Trim start and end with waveform preview</p></div></div>
+            <div class="trimmer-actions">
+              <span class="trim-range" id="trimRange">Range: 0:00 - 0:00</span>
+              <button class="trim-reset hidden" id="trimReset">↺ Reset</button>
+            </div>
+          </div>
+          <div class="wave-timeline" id="waveTimeline">
+            <div class="wave-bars" id="waveBars"></div>
+            <div class="wave-dim" id="waveDimLeft"></div>
+            <div class="wave-select" id="waveSelect"><span class="wave-handle left"></span><span class="wave-handle right"></span></div>
+            <div class="wave-dim" id="waveDimRight"></div>
+            <div class="wave-playhead" id="wavePlayhead"></div>
+          </div>
+          <div class="trim-controls">
+            <div class="trim-row"><span class="trim-label"><i class="dot"></i> Start:</span><input type="range" id="trimStart" min="0" max="100" step="0.1" value="0" class="slider"/><span class="trim-time" id="trimStartTime">0:00</span></div>
+            <div class="trim-row"><span class="trim-label"><i class="dot"></i> End:</span><input type="range" id="trimEnd" min="0" max="100" step="0.1" value="100" class="slider"/><span class="trim-time" id="trimEndTime">0:00</span></div>
+          </div>
+          <div class="trim-footer">
+            <button class="play-trim" id="playTrim">▶ Play Trimmed Selection</button>
+            <div class="quick-trims"><span>Quick:</span><button data-quick="first30">First 30s</button><button data-quick="middle">Middle 30s</button><button data-quick="last30">Last 30s</button></div>
+          </div>
+        </div>
+
         <div class="settings">
           <div class="setting">
             <div class="setting-head">

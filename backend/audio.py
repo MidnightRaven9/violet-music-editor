@@ -128,6 +128,38 @@ def _build_effect_board(effect: str, reverb_wet: float) -> Pedalboard:
             Reverb(room_size=0.5, damping=0.5, wet_level=0.15, dry_level=0.85),
         ])
 
+    # --- Song Player classics -------------------------------------------------
+    if effect == "daycore":
+        # Slowed + pitched down, dreamy
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=140, gain_db=3.0),
+            LowpassFilter(cutoff_frequency_hz=11000),
+            Reverb(room_size=0.7, damping=0.6, wet_level=0.35, dry_level=0.65),
+        ])
+    if effect == "vaporwave":
+        # Heavy reverb, compressed, dusty lo-fi low-pass
+        return Pedalboard([
+            LowpassFilter(cutoff_frequency_hz=6000),
+            Compressor(threshold_db=-30, ratio=6.0, attack_ms=5, release_ms=150),
+            Reverb(room_size=0.9, damping=0.55, wet_level=0.6, dry_level=0.4),
+        ])
+    if effect == "nightcore_reverse":
+        # Slowed + pitched down with a touch of space
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=160, gain_db=2.5),
+            Reverb(room_size=0.55, damping=0.6, wet_level=0.3, dry_level=0.7),
+        ])
+    if effect == "lofi":
+        # Mellow tape-like warmth: low-pass, bitcrush, gentle hiss handled via EQ
+        return Pedalboard([
+            LowpassFilter(cutoff_frequency_hz=2800),
+            HighpassFilter(cutoff_frequency_hz=60),
+            Bitcrush(bit_depth=8),
+            LowShelfFilter(cutoff_frequency_hz=200, gain_db=2.0),
+        ])
+    # sped_up, nightcore, 8d: no extra coloring here
+    # (8d gets its own panning stage in process_file)
+
     # --- EDM genre-inspired chains -------------------------------------------
     # These shape the uploaded song with each genre's sonic signature
     # (tempo, tonality, filters, dynamics). See main.py for rate/pitch defaults.
@@ -222,6 +254,20 @@ def _normalize_peak(audio: np.ndarray, target_db: float = -1.0) -> np.ndarray:
     return audio * gain
 
 
+def _apply_8d_panning(audio: np.ndarray, sr: int) -> np.ndarray:
+    """Apply a slow circular stereo pan to a mono signal for the '8D' effect."""
+    if audio.shape[0] < 2:
+        mono = audio[0]
+        n = mono.shape[-1]
+        t = np.arange(n, dtype=np.float32) / sr
+        # Constant-power pan, one full circle every 8 seconds
+        angle = 2.0 * np.pi * (0.125 * t)
+        left = np.sqrt(0.5 * (1.0 + np.cos(angle))) * mono
+        right = np.sqrt(0.5 * (1.0 - np.cos(angle))) * mono
+        return np.stack([left, right], axis=0)
+    return audio
+
+
 def process_file(
     input_path: str,
     output_path: str,
@@ -229,11 +275,14 @@ def process_file(
     rate: float,
     pitch: float,
     reverb: float,
+    trim_start: float = 0.0,
+    trim_end: float = 0.0,
     progress_cb=None,
 ) -> None:
-    """Full pipeline: decode -> RubberBand -> effects -> mastering -> MP3."""
+    """Full pipeline: decode -> trim -> RubberBand -> effects -> mastering -> MP3."""
     stem = str(Path(output_path).with_suffix(""))
     decoded_wav = f"{stem}_decoded.wav"
+    trimmed_wav = f"{stem}_trimmed.wav"
     stretched_wav = f"{stem}_stretched.wav"
     processed_wav = f"{stem}_processed.wav"
 
@@ -245,10 +294,22 @@ def process_file(
         cb(5, "Decoding audio...")
         decode_to_wav(input_path, decoded_wav)
 
+        # Trim the ORIGINAL audio first so trim times use the song's timeline,
+        # then apply time-stretch/pitch to the trimmed clip.
         source = decoded_wav
+        if trim_end > trim_start:
+            cb(12, "Trimming selection...")
+            audio, sr = sf.read(decoded_wav, dtype="float32")  # (frames, channels) or (frames,)
+            s = int(trim_start * sr)
+            e = int(trim_end * sr)
+            if e > s:
+                trimmed = audio[s:e]  # slice on frame axis; keeps channel dim
+                sf.write(trimmed_wav, trimmed, sr, subtype="PCM_16")
+                source = trimmed_wav
+
         if abs(rate - 1.0) > 1e-3 or abs(pitch) > 1e-3:
             cb(20, "Professional time-stretch & pitch shift...")
-            rubberband_time_pitch(decoded_wav, stretched_wav, rate, pitch)
+            rubberband_time_pitch(source, stretched_wav, rate, pitch)
             source = stretched_wav
 
         cb(40, "Loading audio...")
@@ -270,6 +331,10 @@ def process_file(
         if len(effect_board) > 0:
             audio = effect_board(audio, sr)
 
+        # 8D Audio: circular stereo panning
+        if effect == "8d":
+            audio = _apply_8d_panning(audio, sr)
+
         cb(70, "Mastering (EQ, compression, limiting)...")
         mastering = _build_mastering_board()
         audio = mastering(audio, sr)
@@ -284,7 +349,7 @@ def process_file(
         encode_to_mp3(processed_wav, output_path)
         cb(100, "Done")
     finally:
-        for p in (decoded_wav, stretched_wav, processed_wav):
+        for p in (decoded_wav, trimmed_wav, stretched_wav, processed_wav):
             try:
                 os.remove(p)
             except OSError:

@@ -42,6 +42,8 @@ def _process_job(
     rate: float,
     pitch: float,
     reverb: float,
+    trim_start: float = 0.0,
+    trim_end: float = 0.0,
 ) -> None:
     """Run audio processing in an isolated subprocess.
 
@@ -55,6 +57,7 @@ def _process_job(
         sys.executable, worker_script,
         input_path, output_path, effect,
         str(rate), str(pitch), str(reverb),
+        str(trim_start), str(trim_end),
     ]
 
     try:
@@ -148,6 +151,8 @@ async def upload(
     rate: float = Form(1.3),
     pitch: float = Form(7.0),
     reverb: float = Form(0.3),
+    trim_start: float = Form(0.0),
+    trim_end: float = Form(0.0),
 ):
     job_id = str(uuid.uuid4())
     content = await file.read()
@@ -173,7 +178,7 @@ async def upload(
     output_path = PROCESSED_DIR / f"{job_id}.mp3"
     background_tasks.add_task(
         _process_job, job_id, str(upload_path), str(output_path),
-        effect, rate, pitch, reverb,
+        effect, rate, pitch, reverb, trim_start, trim_end,
     )
     return {"job_id": job_id}
 
@@ -250,6 +255,12 @@ def list_effects():
         "phaser": {"label": "Phaser", "rate": 1.0, "pitch": 0, "reverb": 0.1},
         "bitcrush": {"label": "Bitcrush", "rate": 1.0, "pitch": 0, "reverb": 0.0},
         "glitchcore": {"label": "Glitchcore", "rate": 1.4, "pitch": 12, "reverb": 0.3},
+        "daycore": {"label": "Daycore", "rate": 0.8, "pitch": -7, "reverb": 0.35},
+        "vaporwave": {"label": "Vaporwave", "rate": 0.65, "pitch": -7, "reverb": 0.6},
+        "sped_up": {"label": "Sped Up", "rate": 1.35, "pitch": 0, "reverb": 0},
+        "nightcore_reverse": {"label": "Nightcore Reverse", "rate": 0.75, "pitch": -7, "reverb": 0.3},
+        "lofi": {"label": "Lo-Fi", "rate": 0.9, "pitch": -2, "reverb": 0.1},
+        "8d": {"label": "8D Audio", "rate": 1.0, "pitch": 0, "reverb": 0},
         "house": {"label": "House", "rate": 1.0, "pitch": 0, "reverb": 0.12},
         "techno": {"label": "Techno", "rate": 1.05, "pitch": 0, "reverb": 0.08},
         "trance": {"label": "Trance", "rate": 1.05, "pitch": 2, "reverb": 0.3},
