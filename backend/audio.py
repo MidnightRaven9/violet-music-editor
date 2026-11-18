@@ -127,6 +127,69 @@ def _build_effect_board(effect: str, reverb_wet: float) -> Pedalboard:
             Distortion(drive_db=3.0),
             Reverb(room_size=0.5, damping=0.5, wet_level=0.15, dry_level=0.85),
         ])
+
+    # --- EDM genre-inspired chains -------------------------------------------
+    # These shape the uploaded song with each genre's sonic signature
+    # (tempo, tonality, filters, dynamics). See main.py for rate/pitch defaults.
+    if effect == "house":
+        # Warm, clean, club-ready: rounded lows, gentle presence, light space
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=125, gain_db=3.0),
+            PeakFilter(cutoff_frequency_hz=2500, gain_db=1.5, q=0.8),
+            Reverb(room_size=0.35, damping=0.6, wet_level=0.12, dry_level=0.88),
+        ])
+    if effect == "techno":
+        # Dark, driving, machine-like: tight low-pass, gritty mids, dry and punchy
+        return Pedalboard([
+            LowpassFilter(cutoff_frequency_hz=7000),
+            LowShelfFilter(cutoff_frequency_hz=90, gain_db=4.0),
+            Distortion(drive_db=2.0),
+            Reverb(room_size=0.25, damping=0.7, wet_level=0.08, dry_level=0.92),
+        ])
+    if effect == "trance":
+        # Uplifting and lush: bright air, wide chorus, long tail, echo
+        return Pedalboard([
+            HighShelfFilter(cutoff_frequency_hz=9000, gain_db=3.0),
+            Chorus(rate_hz=0.25, depth=0.3, centre_delay_ms=8.0,
+                   feedback=0.2, mix=0.25),
+            Delay(delay_seconds=0.375, feedback=0.35, mix=0.2),
+            Reverb(room_size=0.8, damping=0.4, wet_level=0.3, dry_level=0.7),
+        ])
+    if effect == "dubstep":
+        # Half-time growl: massive sub, heavy saturation, dark low-pass
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=60, gain_db=10.0),
+            Distortion(drive_db=10.0),
+            LowpassFilter(cutoff_frequency_hz=5000),
+            Compressor(threshold_db=-22, ratio=4.0, attack_ms=5, release_ms=100),
+        ])
+    if effect == "trap":
+        # 808 sub-bass and crisp hats: deep lows, tidy low-end, bright top
+        return Pedalboard([
+            HighpassFilter(cutoff_frequency_hz=30),
+            LowShelfFilter(cutoff_frequency_hz=55, gain_db=9.0),
+            Distortion(drive_db=3.0),
+            HighShelfFilter(cutoff_frequency_hz=10000, gain_db=2.0),
+        ])
+    if effect == "drum_and_bass":
+        # Fast and aggressive: punchy dynamics, strong bass, bright edge
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=100, gain_db=5.0),
+            Compressor(threshold_db=-16, ratio=3.5, attack_ms=5, release_ms=80),
+            Distortion(drive_db=2.0),
+            HighShelfFilter(cutoff_frequency_hz=9000, gain_db=2.0),
+        ])
+    if effect == "future_bass":
+        # Big, bright, wobbling chords: supersaw width, air, spacious tail
+        return Pedalboard([
+            LowShelfFilter(cutoff_frequency_hz=100, gain_db=3.0),
+            Chorus(rate_hz=0.4, depth=0.4, centre_delay_ms=9.0,
+                   feedback=0.3, mix=0.35),
+            PeakFilter(cutoff_frequency_hz=2500, gain_db=2.0, q=0.7),
+            HighShelfFilter(cutoff_frequency_hz=8000, gain_db=3.0),
+            Reverb(room_size=0.75, damping=0.5, wet_level=0.25, dry_level=0.75),
+        ])
+
     if effect == "custom" and reverb_wet > 0:
         return Pedalboard([
             Reverb(room_size=0.6, damping=0.5,

@@ -176,6 +176,13 @@ def list_effects():
         "phaser": {"label": "Phaser", "rate": 1.0, "pitch": 0, "reverb": 0.1},
         "bitcrush": {"label": "Bitcrush", "rate": 1.0, "pitch": 0, "reverb": 0.0},
         "glitchcore": {"label": "Glitchcore", "rate": 1.4, "pitch": 12, "reverb": 0.3},
+        "house": {"label": "House", "rate": 1.0, "pitch": 0, "reverb": 0.12},
+        "techno": {"label": "Techno", "rate": 1.05, "pitch": 0, "reverb": 0.08},
+        "trance": {"label": "Trance", "rate": 1.05, "pitch": 2, "reverb": 0.3},
+        "dubstep": {"label": "Dubstep", "rate": 0.95, "pitch": 0, "reverb": 0.05},
+        "trap": {"label": "Trap", "rate": 0.9, "pitch": -1, "reverb": 0.08},
+        "drum_and_bass": {"label": "Drum & Bass", "rate": 1.4, "pitch": 0, "reverb": 0.05},
+        "future_bass": {"label": "Future Bass", "rate": 1.0, "pitch": 2, "reverb": 0.25},
         "custom": {"label": "Custom Remix", "rate": 1.0, "pitch": 0, "reverb": 0},
     }
 

@@ -30,6 +30,13 @@ installed on your phone's home screen.
 | Bass Boost | ×1.0 | — | — |
 | Echo / Delay | ×1.0 | — | — |
 | Reverb | ×1.0 | — | 35% |
+| House | ×1.0 | — | warm, club EQ |
+| Techno | ×1.05 | — | dark, driving |
+| Trance | ×1.05 | +2 | uplifting, lush |
+| Dubstep | ×0.95 | — | half-time growl |
+| Trap | ×0.9 | -1 | 808 sub |
+| Drum & Bass | ×1.4 | — | fast, punchy |
+| Future Bass | ×1.0 | +2 | bright, wobbly |
 | Custom | your sliders | your sliders | your sliders |
 
 ---
