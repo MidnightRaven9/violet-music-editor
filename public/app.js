@@ -86,6 +86,7 @@ async function init() {
 function buildPills() {
   const wrap = $("pills");
   wrap.innerHTML = "";
+  $("effectCount").textContent = `${Object.keys(state.effects).length} presets`;
   const names = ["original", ...Object.keys(state.effects)];
   names.forEach((id) => {
     const btn = document.createElement("button");
@@ -552,8 +553,10 @@ async function aiStatus() {
   try {
     const r = await fetch(`${API}/api/ai-status`);
     const s = await r.json();
-    $("aiHint").textContent = s.connected ? "🟢 Engine connected." : "⚪ Engine not connected — set AI_ENGINE_URL on the app server.";
-  } catch (e) { $("aiHint").textContent = "⚪ Engine status unavailable."; }
+    $("aiHint").textContent = s.connected ? "Engine connected." : "Engine offline — set AI_ENGINE_URL on the server.";
+    $("engineDot").parentElement.classList.toggle("on", !!s.connected);
+    $("engineLabel").textContent = s.connected ? "AI connected" : "Local engine";
+  } catch (e) { $("aiHint").textContent = "Engine status unavailable."; }
 }
 
 function openTags() {
