@@ -1,274 +1,442 @@
-// EDM Remix Maker — frontend logic
+// Violet Music Editor — player UI (styled after Song Player)
 
-const API = ""; // same origin
+const API = "";
 const state = {
+  file: null,
+  originalUrl: null,
+  effects: {},
+  effect: "nightcore",
   jobId: null,
-  selectedFile: null,
-  selectedEffect: "nightcore",
-  rate: 1.3,
-  pitch: 7,
-  reverb: 0.3,
+  isPlaying: false,
+  duration: 0,
+  volume: 1,
+  muted: false,
+  tempo: 1,
+  resultUrl: null,       // generated remix URL (when ready)
 };
 
-const els = {
-  fileInput: document.getElementById("fileInput"),
-  uploadArea: document.getElementById("uploadArea"),
-  fileName: document.getElementById("fileName"),
-  effectBtns: document.querySelectorAll(".effect-btn"),
-  processBtn: document.getElementById("processBtn"),
-  status: document.getElementById("status"),
-  statusText: document.getElementById("statusText"),
-  customControls: document.getElementById("customControls"),
-  rateInput: document.getElementById("rateInput"),
-  rateVal: document.getElementById("rateVal"),
-  pitchInput: document.getElementById("pitchInput"),
-  pitchVal: document.getElementById("pitchVal"),
-  reverbInput: document.getElementById("reverbInput"),
-  reverbVal: document.getElementById("reverbVal"),
-  resultSection: document.getElementById("resultSection"),
-  originalAudio: document.getElementById("originalAudio"),
-  remixAudio: document.getElementById("remixAudio"),
-  downloadBtn: document.getElementById("downloadBtn"),
+const $ = (id) => document.getElementById(id);
+
+let audio, ctx, source, analyser, masterGain, rafId;
+
+const MUSICAL_KEYS = [
+  'Original', 'C Major', 'C Minor', 'C# Major', 'C# Minor',
+  'D Major', 'D Minor', 'D# Major', 'D# Minor', 'E Major', 'E Minor',
+  'F Major', 'F Minor', 'F# Major', 'F# Minor', 'G Major', 'G Minor',
+  'G# Major', 'G# Minor', 'A Major', 'A Minor', 'A# Major', 'A# Minor',
+  'B Major', 'B Minor'
+];
+
+const EFFECT_COLORS = {
+  original:       ['#a855f7', '#c084fc', '#e879f9', '#a855f7'],
+  nightcore:      ['#DE25F4', '#9332A5', '#813DB0', '#153CB4'],
+  slowed_reverb:  ['#4A91F2', '#8874A3', '#3D1E6D', '#2E003E'],
+  bass_boost:     ['#FF003C', '#3D0066', '#0A0A0C', '#222226'],
+  echo:           ['#8B5CF6', '#6D28D9', '#4C1D95', '#1E1B4B'],
+  reverb:         ['#38BDF8', '#6366F1', '#7C3AED', '#312E81'],
+  chroma:         ['#34D399', '#10B981', '#047857', '#064E3B'],
+  distortion:     ['#F97316', '#DC2626', '#7F1D1D', '#1C1917'],
+  phaser:         ['#22D3EE', '#0EA5E9', '#4338CA', '#1E1B4B'],
+  bitcrush:       ['#FACC15', '#F59E0B', '#B45309', '#451A03'],
+  glitchcore:     ['#F472B6', '#A855F7', '#6366F1', '#0F172A'],
+  house:          ['#FBBF24', '#F59E0B', '#B45309', '#1C1917'],
+  techno:         ['#EF4444', '#991B1B', '#450A0A', '#0A0A0A'],
+  trance:         ['#38BDF8', '#818CF8', '#C084FC', '#312E81'],
+  dubstep:        ['#F43F5E', '#BE123C', '#6B21A8', '#0F172A'],
+  trap:           ['#A78BFA', '#7C3AED', '#4C1D95', '#0A0A0A'],
+  drum_and_bass:  ['#FACC15', '#F97316', '#DC2626', '#450A0A'],
+  future_bass:    ['#F9A8D4', '#C084FC', '#818CF8', '#312E81'],
+  custom:         ['#a855f7', '#c084fc', '#e879f9', '#a855f7'],
 };
 
-function $(id) { return document.getElementById(id); }
+function hexToRgb(hex) {
+  const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return r ? { r: parseInt(r[1], 16), g: parseInt(r[2], 16), b: parseInt(r[3], 16) } : { r: 0, g: 0, b: 0 };
+}
+function interpolate(a, b, f) {
+  const c1 = hexToRgb(a), c2 = hexToRgb(b);
+  return `rgb(${Math.round(c1.r + f*(c2.r-c1.r))}, ${Math.round(c1.g + f*(c2.g-c1.g))}, ${Math.round(c1.b + f*(c2.b-c1.b))})`;
+}
 
 async function init() {
-  // Load available effects and set defaults
+  audio = $("audio");
   try {
-    const res = await fetch(`${API}/api/effects`);
-    const effects = await res.json();
-    // wire effect buttons
-    els.effectBtns.forEach((btn) => {
-      const effect = btn.dataset.effect;
-      btn.addEventListener("click", () => selectEffect(effect, effects[effect]));
-    });
-  } catch (e) {
-    console.warn("Could not load effects", e);
-  }
+    const r = await fetch(`${API}/api/effects`);
+    state.effects = await r.json();
+    state.effect = state.effects.nightcore ? "nightcore" : Object.keys(state.effects)[0];
+  } catch (e) { console.warn("effects load failed", e); }
 
-  // File input
-  els.fileInput.addEventListener("change", (e) => {
+  buildPills();
+  const keySel = $("musicalKey");
+  MUSICAL_KEYS.forEach(k => {
+    const o = document.createElement("option");
+    o.value = k; o.textContent = k; keySel.appendChild(o);
+  });
+
+  wireEvents();
+  aiStatus();
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/static/sw.js").catch(() => {});
+  }
+}
+
+function buildPills() {
+  const wrap = $("pills");
+  wrap.innerHTML = "";
+  const names = ["original", ...Object.keys(state.effects)];
+  names.forEach((id) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pill" + (id === state.effect ? " active" : "");
+    btn.dataset.effect = id;
+    const label = id === "original" ? "Original" : (state.effects[id]?.label || id);
+    btn.textContent = label;
+    btn.addEventListener("click", () => selectEffect(id));
+    wrap.appendChild(btn);
+  });
+}
+
+function wireEvents() {
+  $("fileInput").addEventListener("change", (e) => {
     if (e.target.files.length) handleFile(e.target.files[0]);
   });
 
-  // Drag & drop
-  els.uploadArea.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    els.uploadArea.classList.add("dragover");
-  });
-  els.uploadArea.addEventListener("dragleave", () => {
-    els.uploadArea.classList.remove("dragover");
-  });
-  els.uploadArea.addEventListener("drop", (e) => {
-    e.preventDefault();
-    els.uploadArea.classList.remove("dragover");
-    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-  });
-  // Process
-  els.processBtn.addEventListener("click", processFile);
+  $("playBtn").addEventListener("click", togglePlay);
+  audio.addEventListener("timeupdate", onTime);
+  audio.addEventListener("loadedmetadata", onTime);
+  audio.addEventListener("ended", () => { state.isPlaying = false; updatePlayIcon(); });
 
-  // Sliders
-  els.rateInput.addEventListener("input", () => {
-    state.rate = parseFloat(els.rateInput.value);
-    els.rateVal.textContent = state.rate.toFixed(2) + "×";
-  });
-  els.pitchInput.addEventListener("input", () => {
-    state.pitch = parseFloat(els.pitchInput.value);
-    els.pitchVal.textContent = state.pitch + " semitones";
-  });
-  els.reverbInput.addEventListener("input", () => {
-    state.reverb = parseFloat(els.reverbInput.value);
-    els.reverbVal.textContent = (state.reverb * 100).toFixed(0) + "%";
+  $("seek").addEventListener("input", (e) => {
+    if (audio.duration) { audio.currentTime = Number(e.target.value); }
   });
 
-  // Download
-  els.downloadBtn.addEventListener("click", () => {
-    if (!state.jobId) return;
-    const url = `${API}/api/download/${state.jobId}`;
-    // Use an anchor with download attribute so browsers save the file.
-    // In the Android WebView this triggers the DownloadListener.
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `violet_remix_${state.jobId.slice(0, 8)}.mp3`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  $("volume").addEventListener("input", (e) => {
+    state.volume = Number(e.target.value);
+    if (state.volume > 0) state.muted = false;
+    applyVolume();
+  });
+  $("muteBtn").addEventListener("click", () => { state.muted = !state.muted; applyVolume(); });
+
+  $("tempo").addEventListener("input", (e) => {
+    state.tempo = Number(e.target.value);
+    $("tempoVal").textContent = Math.round(state.tempo * 100) + "%";
+    applyPlaybackRate();
   });
 
-  // AI Restyle button + duration slider + status hint
-  $("aiRestyleBtn").addEventListener("click", aiRestyle);
-  $("aiDurationInput").addEventListener("input", () => {
-    $("aiDurationVal").textContent = $("aiDurationInput").value + "s";
-  });
-  try {
-    const r = await fetch(`${API}/api/ai-status`);
-    const s = await r.json();
-    $("aiStatusHint").textContent = s.connected
-      ? "🟢 Engine connected."
-      : "⚪ Engine not connected — the AI button will tell you how to connect it.";
-  } catch (e) { /* status hint optional */ }
+  $("musicalKey").addEventListener("change", () => { /* used on generation */ });
 
-  // PWA install prompt
-  let deferredInstall;
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    deferredInstall = e;
-  });
+  $("downloadBtn").addEventListener("click", generateAndDownload);
+  $("aiBtn").addEventListener("click", aiRestyle);
+  $("aiDuration").addEventListener("input", (e) => { $("aiDurVal").textContent = e.target.value + "s"; });
+  $("differentTrack").addEventListener("click", resetTrack);
+  $("editTagsBtn").addEventListener("click", openTags);
+  $("saveTags").addEventListener("click", saveTags);
 
-  // Register service worker
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/static/sw.js").catch((err) =>
-      console.warn("SW registration failed", err)
-    );
-  }
+  document.querySelectorAll("[data-close]").forEach((b) => {
+    b.addEventListener("click", () => $(b.dataset.close).classList.add("hidden"));
+  });
+}
+
+function applyVolume() {
+  const v = state.muted ? 0 : state.volume;
+  audio.volume = v;
+  if (masterGain && ctx) masterGain.gain.setTargetAtTime(v, ctx.currentTime, 0.05);
+  $("volVal").textContent = state.muted || state.volume === 0 ? "Muted" : Math.round(state.volume * 100) + "%";
+  const icon = state.muted || state.volume === 0 ? "i-volx" : (state.volume < 0.5 ? "i-vol1" : "i-vol2");
+  $("volIcon").innerHTML = `<use href="#${icon}"/>`;
+  $("volIcon").style.color = state.muted || state.volume === 0 ? "var(--danger)" : "var(--muted)";
+}
+
+function applyPlaybackRate() {
+  // Live preview: the effect's speed × the user's tempo slider.
+  // (The rendered MP3 uses professional time-stretch on the backend.)
+  const meta = state.effects[state.effect] || { rate: 1 };
+  const rate = state.resultUrl ? 1 : (meta.rate || 1);
+  audio.playbackRate = Math.max(0.25, Math.min(2.5, rate * state.tempo));
 }
 
 function handleFile(file) {
-  if (!file.type.startsWith("audio/") && !file.name.toLowerCase().endsWith(".mp3")) {
-    // still allow — backend will decode what it can
-  }
-  state.selectedFile = file;
-  els.fileName.textContent = file.name + ` (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-  els.originalAudio.src = URL.createObjectURL(file);
-  els.originalAudio.hidden = false;
+  state.file = file;
+  if (state.originalUrl) URL.revokeObjectURL(state.originalUrl);
+  state.originalUrl = URL.createObjectURL(file);
   state.jobId = null;
-  els.resultSection.classList.add("hidden");
-  els.status.classList.remove("visible");
-  els.downloadBtn.disabled = true;
-  // Auto-select an effect if none chosen
-  if (!state.selectedEffect) selectEffect("nightcore");
+  state.resultUrl = null;
+  state.duration = 0;
+  state.tempo = 1;
+  $("tempo").value = 1;
+  $("tempoVal").textContent = "100%";
+
+  audio.src = state.originalUrl;
+  audio.load();
+  state.isPlaying = false;
+  updatePlayIcon();
+
+  const name = file.name.replace(/\.[^/.]+$/, "");
+  let title = name, artist = "Unknown Artist", album = "";
+  const dash = name.split(" - ");
+  if (dash.length >= 2) { artist = dash[0].trim(); title = dash.slice(1).join(" - ").trim(); }
+  state.title = title; state.artist = artist; state.album = album;
+  $("fileName").textContent = file.name;
+  $("trackTitle").textContent = title;
+  $("artistName").textContent = artist;
+  $("albumName").textContent = album;
+
+  $("uploadArea").classList.add("hidden");
+  $("player").classList.remove("hidden");
+  setStatus("", false);
+  buildPills();
+  applyPlaybackRate();
 }
 
-function selectEffect(effect, meta) {
-  state.selectedEffect = effect;
-  els.effectBtns.forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.effect === effect);
-  });
-  const isCustom = effect === "custom";
-  els.customControls.classList.toggle("visible", isCustom);
-
-  if (meta) {
-    state.rate = meta.rate;
-    state.pitch = meta.pitch;
-    state.reverb = meta.reverb;
-    els.rateInput.value = state.rate;
-    els.pitchInput.value = state.pitch;
-    els.reverbInput.value = state.reverb;
-    els.rateVal.textContent = state.rate.toFixed(2) + "×";
-    els.pitchVal.textContent = state.pitch + " semitones";
-    els.reverbVal.textContent = (state.reverb * 100).toFixed(0) + "%";
+function selectEffect(id) {
+  state.effect = id;
+  document.querySelectorAll(".pill").forEach(p => p.classList.toggle("active", p.dataset.effect === id));
+  // Preview: switch back to the original source with the new effect speed.
+  if (state.originalUrl) {
+    state.resultUrl = null;
+    audio.src = state.originalUrl;
+    audio.load();
+    state.isPlaying = false;
+    updatePlayIcon();
   }
-  els.processBtn.disabled = !state.selectedFile;
+  applyPlaybackRate();
+}
+
+function initAudioGraph() {
+  if (ctx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  ctx = new AC();
+  source = ctx.createMediaElementSource(audio);
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  masterGain = ctx.createGain();
+  masterGain.gain.value = state.muted ? 0 : state.volume;
+  source.connect(analyser);
+  analyser.connect(masterGain);
+  masterGain.connect(ctx.destination);
+}
+
+function togglePlay() {
+  if (!state.file) return;
+  initAudioGraph();
+  if (ctx && ctx.state === "suspended") ctx.resume();
+  if (state.isPlaying) {
+    audio.pause();
+  } else {
+    audio.play().catch(() => {});
+  }
+  state.isPlaying = !state.isPlaying;
+  updatePlayIcon();
+  $("vizRing").classList.toggle("playing", state.isPlaying);
+  if (state.isPlaying) drawVisualizer(); else if (rafId) cancelAnimationFrame(rafId);
+}
+
+function updatePlayIcon() {
+  $("playIcon").innerHTML = `<use href="#${state.isPlaying ? "i-pause" : "i-play"}"/>`;
+  $("vizRing").classList.toggle("playing", state.isPlaying);
+  if (!state.isPlaying && rafId) { cancelAnimationFrame(rafId); rafId = null; }
+}
+
+function onTime() {
+  if (!audio) return;
+  const cur = audio.currentTime, dur = audio.duration;
+  if (dur && !isNaN(dur)) {
+    state.duration = dur;
+    $("durTime").textContent = fmt(dur);
+    $("seek").max = dur;
+    $("seek").value = cur;
+  }
+  $("curTime").textContent = fmt(cur);
+}
+
+function fmt(t) {
+  if (isNaN(t)) return "0:00";
+  const m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function drawVisualizer() {
+  if (!analyser) return;
+  const canvas = $("viz"), c = canvas.getContext("2d");
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  const colors = EFFECT_COLORS[state.effect] || EFFECT_COLORS.original;
+  const n = colors.length;
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2, cy = h / 2, radius = 82;
+
+  const frame = () => {
+    analyser.getByteFrequencyData(buf);
+    c.clearRect(0, 0, w, h);
+    let bass = 0, mid = 0;
+    for (let i = 0; i < 10; i++) bass += buf[i];
+    for (let i = 10; i < 50; i++) mid += buf[i];
+    const offset = ((bass / 10) + (mid / 40)) / 510;
+    const bars = 60, step = Math.PI * 2 / bars;
+    c.lineWidth = 3;
+    for (let i = 0; i < bars; i++) {
+      const idx = Math.floor((i / bars) * (buf.length * 0.6));
+      const barH = (buf[idx] / 255) * 28;
+      const ang = i * step;
+      const x1 = cx + Math.cos(ang) * radius, y1 = cy + Math.sin(ang) * radius;
+      const x2 = cx + Math.cos(ang) * (radius + barH), y2 = cy + Math.sin(ang) * (radius + barH);
+      const pos = (i / bars + offset) * n;
+      const ci = Math.floor(pos) % n, ni = (ci + 1) % n;
+      c.strokeStyle = interpolate(colors[ci], colors[ni], pos - Math.floor(pos));
+      c.lineCap = "round";
+      c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    }
+    if (state.isPlaying) rafId = requestAnimationFrame(frame);
+  };
+  frame();
+}
+
+function setStatus(text, error) {
+  const el = $("status");
+  if (!text) { el.classList.add("hidden"); return; }
+  el.classList.remove("hidden");
+  el.classList.toggle("error", !!error);
+  $("statusText").textContent = text;
+  $("statusSpin").style.display = error ? "none" : "block";
+}
+
+function keyToSemitones(key) {
+  if (!key || key === "Original") return 0;
+  const map = { "C":0, "C#":1, "D":2, "D#":3, "E":4, "F":5, "F#":6, "G":7, "G#":8, "A":9, "A#":10, "B":11 };
+  const root = key.split(" ")[0];
+  return map[root] ?? 0;
+}
+
+async function generateAndDownload() {
+  if (!state.file) return;
+  if (state.effect === "original") {
+    openExport(state.originalUrl, state.file.name);
+    return;
+  }
+  if (state.resultUrl) { openExport(state.resultUrl, `${state.title}_${state.effect}.mp3`); return; }
+
+  const meta = state.effects[state.effect] || { rate: 1, pitch: 0, reverb: 0 };
+  const form = new FormData();
+  form.append("file", state.file);
+  form.append("effect", state.effect);
+  form.append("rate", String(meta.rate || 1));
+  form.append("pitch", String((meta.pitch || 0) + keyToSemitones($("musicalKey").value)));
+  form.append("reverb", String(meta.reverb || 0));
+
+  $("downloadBtn").disabled = true;
+  setStatus("Generating professional remix…", false);
+  try {
+    const res = await fetch(`${API}/api/upload`, { method: "POST", body: form });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    state.jobId = data.job_id;
+    pollJob(false);
+  } catch (err) {
+    setStatus(err.message || "Upload failed", true);
+    $("downloadBtn").disabled = false;
+  }
 }
 
 async function aiRestyle() {
-  if (!state.selectedFile) {
-    els.statusText.textContent = "Choose a song first";
-    els.status.classList.add("visible", "error");
-    return;
-  }
+  if (!state.file) return;
   const form = new FormData();
-  form.append("file", state.selectedFile);
-  form.append("style", $("aiStyleInput").value);
-  form.append("duration", $("aiDurationInput").value);
-
-  els.status.classList.add("visible");
-  els.status.classList.remove("error");
-  els.statusText.textContent = "Sending to AI engine…";
-  els.resultSection.classList.add("hidden");
-  els.downloadBtn.disabled = true;
-  $("aiRestyleBtn").disabled = true;
-
+  form.append("file", state.file);
+  form.append("style", $("aiStyle").value);
+  form.append("duration", $("aiDuration").value);
+  $("aiBtn").disabled = true;
+  setStatus("Sending to AI engine…", false);
   try {
     const res = await fetch(`${API}/api/ai-restyle`, { method: "POST", body: form });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     state.jobId = data.job_id;
-    pollJob();
+    pollJob(true);
   } catch (err) {
-    els.statusText.textContent = err.message || "AI restyle failed";
-    els.status.classList.add("error");
+    setStatus(err.message || "AI restyle failed", true);
   } finally {
-    $("aiRestyleBtn").disabled = false;
+    $("aiBtn").disabled = false;
   }
 }
 
-async function processFile() {
-  if (!state.selectedFile) return;
-
-  const form = new FormData();
-  form.append("file", state.selectedFile);
-  form.append("effect", state.selectedEffect);
-  form.append("rate", String(state.rate));
-  form.append("pitch", String(state.pitch));
-  form.append("reverb", String(state.reverb));
-
-  els.status.classList.add("visible");
-  els.status.classList.remove("error");
-  els.statusText.textContent = "Uploading…";
-  els.processBtn.disabled = true;
-  els.resultSection.classList.add("hidden");
-  els.downloadBtn.disabled = true;
-
-  try {
-    const res = await fetch(`${API}/api/upload`, { method: "POST", body: form });
-    if (!res.ok) throw new Error("Upload failed");
-    const data = await res.json();
-    if (data.error) {
-      throw new Error(data.error);
-    }
-    state.jobId = data.job_id;
-    pollJob();
-  } catch (err) {
-    els.statusText.textContent = err.message || "Upload failed";
-    els.status.classList.add("error");
-    els.processBtn.disabled = false;
-  }
-}
-
-async function pollJob() {
+async function pollJob(isAI) {
   if (!state.jobId) return;
   try {
     const res = await fetch(`${API}/api/jobs/${state.jobId}`);
     const job = await res.json();
-
-    if (job.status === "processing") {
-      els.statusText.textContent = `${job.message} (${job.progress}%)`;
-      setTimeout(pollJob, 1200);
+    if (job.status === "processing" || job.status === "uploaded") {
+      setStatus(`${job.message} (${job.progress || 0}%)`, false);
+      setTimeout(() => pollJob(isAI), 1200);
       return;
     }
-
     if (job.status === "done") {
-      els.statusText.textContent = job.message;
-      els.status.classList.add("visible");
-      // Rebuild remix audio URL (with cache bust)
-      const remixUrl = `${API}/api/download/${state.jobId}?t=${Date.now()}`;
-      els.remixAudio.src = remixUrl;
-      els.remixAudio.hidden = false;
-      // resultSection is hidden via the CSS class ".hidden", so remove the
-      // class (setting .hidden=false only clears the HTML attribute).
-      els.resultSection.classList.remove("hidden");
-      els.downloadBtn.disabled = false;
-      els.processBtn.disabled = false;
+      setStatus("", false);
+      const url = `${API}/api/download/${state.jobId}?t=${Date.now()}`;
+      state.resultUrl = url;
+      audio.src = url;
+      audio.load();
+      applyPlaybackRate();
+      $("downloadBtn").disabled = false;
+      openExport(url, `${state.title}_${isAI ? "ai_restyle" : state.effect}.mp3`);
       return;
     }
-
     if (job.status === "error") {
-      els.statusText.textContent = `Error: ${job.message}`;
-      els.status.classList.add("visible", "error");
-      els.processBtn.disabled = false;
+      setStatus(`Error: ${job.message}`, true);
+      $("downloadBtn").disabled = false;
       return;
     }
-
-    // uploaded state
-    els.statusText.textContent = job.message || "Processing…";
-    setTimeout(pollJob, 1200);
-  } catch (err) {
-    els.statusText.textContent = "Error checking status";
-    els.status.classList.add("visible", "error");
-    els.processBtn.disabled = false;
+    setTimeout(() => pollJob(isAI), 1200);
+  } catch (e) {
+    setStatus("Error checking status", true);
+    $("downloadBtn").disabled = false;
   }
+}
+
+function openExport(url, filename) {
+  $("exportAudio").src = url;
+  $("exportFile").textContent = filename;
+  const a = $("saveAudio");
+  a.href = url;
+  a.download = filename;
+  $("exportModal").classList.remove("hidden");
+}
+
+async function aiStatus() {
+  try {
+    const r = await fetch(`${API}/api/ai-status`);
+    const s = await r.json();
+    $("aiHint").textContent = s.connected ? "🟢 Engine connected." : "⚪ Engine not connected — set AI_ENGINE_URL on the app server.";
+  } catch (e) { $("aiHint").textContent = "⚪ Engine status unavailable."; }
+}
+
+function openTags() {
+  $("editTitle").value = state.title || "";
+  $("editArtist").value = state.artist || "";
+  $("editAlbum").value = state.album || "";
+  $("tagModal").classList.remove("hidden");
+}
+function saveTags() {
+  state.title = $("editTitle").value.trim() || state.title;
+  state.artist = $("editArtist").value.trim() || state.artist;
+  state.album = $("editAlbum").value.trim();
+  $("trackTitle").textContent = state.title;
+  $("artistName").textContent = state.artist;
+  $("albumName").textContent = state.album;
+  $("tagModal").classList.add("hidden");
+}
+
+function resetTrack() {
+  if (ctx && ctx.state === "running") ctx.suspend();
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  state.isPlaying = false;
+  state.file = null;
+  state.jobId = null;
+  state.resultUrl = null;
+  if (state.originalUrl) { URL.revokeObjectURL(state.originalUrl); state.originalUrl = null; }
+  audio.src = "";
+  $("player").classList.add("hidden");
+  $("uploadArea").classList.remove("hidden");
+  $("exportModal").classList.add("hidden");
+  $("fileInput").value = "";
 }
 
 init();
